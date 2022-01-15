@@ -51,6 +51,7 @@ import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.keycloak.authentication.AuthenticationFlowContext;
+import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.authenticators.browser.AbstractUsernameFormAuthenticator;
 import org.keycloak.common.util.PemUtils;
 import org.keycloak.events.Details;
@@ -76,14 +77,18 @@ public class CnsX509ClientCertificateAuthenticator extends X509ClientCertificate
     public void authenticate(AuthenticationFlowContext context) {
         try {
 
+            logger.info("init X509ClientCertificateAuthenticator:authenticate");
             dumpContainerAttributes(context);
 
             X509Certificate[] certs = getCertificateChain(context);
             if (certs == null || certs.length == 0) {
                 // No x509 client cert, fall through and
                 // continue processing the rest of the authentication flow
-                logger.debug("[X509ClientCertificateAuthenticator:authenticate] x509 client certificate is not available for mutual SSL.");
-                context.attempted();
+                logger.info("[X509ClientCertificateAuthenticator:authenticate] x509 client certificate is not available for mutual SSL.");
+                String errorMessage = "Certificato non trovato.";
+                // TODO is calling form().setErrors enough to show errors on login screen?
+                //Cambiato con forkWithError per evitare problemi sul reload della pagina
+                context.forkWithErrorMessage(new FormMessage(null, errorMessage, null));
                 return;
             }
 
@@ -114,8 +119,11 @@ public class CnsX509ClientCertificateAuthenticator extends X509ClientCertificate
                 // TODO use specific locale to load error messages
                 String errorMessage = "Certificate validation failed.";
                 // TODO is calling form().setErrors enough to show errors on login screen?
-                context.challenge(createErrorResponse(context, certs[0].getSubjectDN().getName(),
-                        errorMessage, e.getMessage()));
+                Response challengeResponse = context.form()
+                        .setError(errorMessage, null).createInfoPage();
+                context.failureChallenge(AuthenticationFlowError.INVALID_USER, challengeResponse);
+                //context.challenge(createErrorResponse(context, certs[0].getSubjectDN().getName(),
+                //        errorMessage, e.getMessage()));
                 context.attempted();
                 return;
             }
